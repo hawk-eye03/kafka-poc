@@ -1,39 +1,51 @@
 package main
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/hawk-eye03/kafka-poc/lib/config"
+	"github.com/hawk-eye03/kafka-poc/lib/consumers"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-func main() {
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": "localhost",
-		"group.id":          "myGroup",
-		"auto.offset.reset": "earliest",
-	})
+func initLogger() *zap.Logger {
+	loggerConfig := zap.Config{
+		Encoding:    "console",
+		Level:       zap.NewAtomicLevelAt(zap.DebugLevel), // Set your desired log level
+		OutputPaths: []string{"stdout"},
+		EncoderConfig: zapcore.EncoderConfig{
+			LevelKey:    "level",
+			TimeKey:     "time",
+			MessageKey:  "msg",
+			EncodeLevel: zapcore.LowercaseLevelEncoder,
+			EncodeTime:  zapcore.ISO8601TimeEncoder,
+		},
+	}
 
+	// Replace the global logger instance with the configured logger
+	logger, err := loggerConfig.Build()
 	if err != nil {
-		panic(err)
+		panic("Failed to initialize logger: " + err.Error())
 	}
 
-	c.SubscribeTopics([]string{"ekka"}, nil)
+	return logger
+}
+func main() {
+	// initialise logger
+	logger := initLogger()
+	zap.ReplaceGlobals(logger)
+	defer logger.Sync()
 
-	// A signal handler or similar could be used to set this to false to break the loop.
-	run := true
+	// Load config for DB, App and Kafka
+	config := config.LoadConfig()
 
-	for run {
-		msg, err := c.ReadMessage(time.Second)
-		if err == nil {
-			fmt.Printf("Message on %s: %s\n", msg.TopicPartition, string(msg.Value))
-		} else if !err.(kafka.Error).IsTimeout() {
-			// The client will automatically try to recover from all errors.
-			// Timeout is not considered an error because it is raised by
-			// ReadMessage in absence of messages.
-			fmt.Printf("Consumer error: %v (%v)\n", err, msg)
-		}
+	switch config.App.Mode {
+	case "DAILY_SUMMARY_CONSUMER":
+		zap.L().Info("Started Daily Summary Consumer")
+		dailySummaryConsumer := consumers.NewDailySummaryConsumer(config)
+		baseConsumer := consumers.NewBaseConsumer(dailySummaryConsumer, *config)
+		baseConsumer.StartConsumer()
+
+	default:
+		zap.L().Info("No valid mode found. Exiting...")
 	}
-
-	c.Close()
 }

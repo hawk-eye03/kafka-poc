@@ -1,0 +1,14 @@
+app:
+  mode: DAILY_SUMMARY_CONSUMER
+
+kafka:
+  host: "localhost:9092"
+  groupID: daily-summary-consumer-dev 
+
+main-db:
+  host: localhost
+  port: 3306
+  username: inktech
+  password: inktech@123
+  name: verisk
+
